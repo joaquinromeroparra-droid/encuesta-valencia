@@ -60,7 +60,6 @@ export default function ValenciaSurvey() {
   };
 
   const checkSubmissionStatus = () => {
-    // MODO PRUEBAS: Limitación desactivada
   };
 
   const loadResponses = () => {
@@ -658,12 +657,3 @@ export default function ValenciaSurvey() {
                   max="10"
                   value={formData[p.id]}
                   onChange={(e) => handleChange(p.id, parseInt(e.target.value))}
-                  className="w-full h-2 bg-gray-300 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                />
-                <div className="flex justify-between text-xs text-gray-500 mt-1">
-                  <span>Sin problema</span>
-                  <span>Problema grave</span>
-                </div>
-              </div>
-            ))}
-          </div
