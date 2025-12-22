@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Encuesta Ciudadana Valencia</title>
+    <script src="https://unpkg.com/@supabase/supabase-js@2.39.3/dist/umd/supabase.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
@@ -17,6 +18,7 @@
         h1 { color: #ea580c; font-size: 32px; margin-bottom: 8px; text-align: center; }
         .subtitle { color: #6b7280; text-align: center; margin-bottom: 24px; }
         .warning { background: #fef3c7; border: 2px solid #fbbf24; padding: 12px; border-radius: 8px; text-align: center; margin-bottom: 24px; color: #92400e; font-weight: 600; }
+        .info { background: #dbeafe; border: 2px solid #3b82f6; padding: 12px; border-radius: 8px; text-align: center; margin-bottom: 24px; color: #1e40af; font-weight: 600; }
         label { display: block; color: #374151; font-weight: 600; margin-bottom: 8px; }
         select, input { width: 100%; padding: 12px; border: 2px solid #d1d5db; border-radius: 8px; font-size: 16px; margin-bottom: 16px; }
         select:focus, input:focus { outline: none; border-color: #ea580c; }
@@ -32,6 +34,7 @@
         button { flex: 1; padding: 16px; border: none; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: pointer; transition: all 0.3s; }
         .btn-primary { background: #ea580c; color: white; }
         .btn-primary:hover { background: #c2410c; }
+        .btn-primary:disabled { background: #d1d5db; cursor: not-allowed; }
         .btn-secondary { background: transparent; border: 2px solid #d1d5db; }
         .btn-secondary:hover { background: #f3f4f6; }
         .admin-btn { width: 64px; padding: 16px; }
@@ -54,12 +57,19 @@
         .modal-content { background: white; padding: 24px; border-radius: 12px; max-width: 400px; width: 100%; }
         .error { color: #dc2626; font-size: 14px; margin-top: 4px; }
         .device-id { text-align: center; color: #6b7280; font-size: 14px; margin-top: 8px; }
+        .loading { text-align: center; padding: 40px; color: #6b7280; }
     </style>
 </head>
 <body>
     <div id="app"></div>
 
     <script>
+        // CONFIGURACIÓN SUPABASE
+        const SUPABASE_URL = 'https://gnaczccnprnuqbjmzdts.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImduYWN6Y2NucHJudXFiam16ZHRzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYzNzQ2MTIsImV4cCI6MjA4MTk1MDYxMn0.A4__oNG_N_M5x61wI12fk-iTXZgsMDDRvYQRT0cmSmg';
+        
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
         // DATOS
         const BARRIOS = ['Ciutat Vella', 'Eixample', 'Extramurs', 'Campanar', 'La Saïdia', 'El Pla del Real', "L'Olivereta", 'Patraix', 'Jesús', 'Quatre Carreres', 'Poblats Marítims', 'Camins al Grau', 'Algirós', 'Benimaclet', 'Rascanya', 'Benicalap', 'Pobles del Nord', "Pobles de l'Oest", 'Pobles del Sud'];
         
@@ -78,12 +88,14 @@
         // ESTADO
         let state = {
             view: 'encuesta',
-            encuestas: JSON.parse(localStorage.getItem('encuestas_valencia') || '[]'),
-            modoPractica: JSON.parse(localStorage.getItem('modo_practica') || 'true'),
+            encuestas: [],
+            modoPractica: true,
             dispositivoId: localStorage.getItem('dispositivo_valencia_id') || '',
             formData: { barrio: '', consentimiento: false, respuestas: {} },
             errors: {},
-            showAdminLogin: false
+            showAdminLogin: false,
+            loading: false,
+            enviando: false
         };
 
         // Inicializar respuestas en 5
@@ -95,10 +107,70 @@
             localStorage.setItem('dispositivo_valencia_id', state.dispositivoId);
         }
 
-        // FUNCIONES
-        function guardarDatos() {
-            localStorage.setItem('encuestas_valencia', JSON.stringify(state.encuestas));
-            localStorage.setItem('modo_practica', JSON.stringify(state.modoPractica));
+        // FUNCIONES SUPABASE
+        async function cargarEncuestas() {
+            try {
+                const { data, error } = await supabaseClient
+                    .from('encuestas')
+                    .select('*')
+                    .order('fecha', { ascending: false });
+                
+                if (error) {
+                    console.error('Error detallado cargando encuestas:', error);
+                    console.error('Mensaje:', error.message);
+                    console.error('Detalles:', error.details);
+                    throw error;
+                }
+                state.encuestas = data || [];
+                console.log('✅ Encuestas cargadas:', state.encuestas.length);
+            } catch (error) {
+                console.error('Error cargando encuestas:', error.message || error);
+                state.encuestas = [];
+            }
+        }
+
+        async function cargarModoPractica() {
+            try {
+                const { data, error } = await supabaseClient
+                    .from('configuracion')
+                    .select('valor')
+                    .eq('clave', 'modo_practica')
+                    .single();
+                
+                if (error) {
+                    console.error('Error detallado modo práctica:', error);
+                    console.error('Mensaje:', error.message);
+                    console.error('Detalles:', error.details);
+                    throw error;
+                }
+                state.modoPractica = data.valor === 'true';
+                console.log('✅ Modo práctica cargado:', state.modoPractica);
+            } catch (error) {
+                console.error('Error cargando modo práctica:', error.message || error);
+                state.modoPractica = true;
+            }
+        }
+
+        async function guardarModoPractica(valor) {
+            try {
+                const { error } = await supabaseClient
+                    .from('configuracion')
+                    .update({ valor: valor.toString(), updated_at: new Date().toISOString() })
+                    .eq('clave', 'modo_practica');
+                
+                if (error) throw error;
+            } catch (error) {
+                console.error('Error guardando modo práctica:', error);
+            }
+        }
+
+        async function inicializar() {
+            state.loading = true;
+            render();
+            await cargarEncuestas();
+            await cargarModoPractica();
+            state.loading = false;
+            render();
         }
 
         function puedeEnviar() {
@@ -117,32 +189,44 @@
             return Object.keys(state.errors).length === 0;
         }
 
-        function enviar() {
+        async function enviar() {
             if (!puedeEnviar()) return alert('Debes esperar 3 meses');
             if (!validar()) return alert('Completa todos los campos');
             
-            const nueva = {
-                id: Date.now().toString(),
-                fecha: new Date().toISOString(),
-                barrio: state.formData.barrio,
-                dispositivo_id: state.dispositivoId,
-                consentimiento: true,
-                seguridad: state.formData.respuestas.seguridad,
-                limpieza: state.formData.respuestas.limpieza,
-                transporte: state.formData.respuestas.transporte,
-                zonas_verdes: state.formData.respuestas.zonas_verdes,
-                ruido: state.formData.respuestas.ruido,
-                calles: state.formData.respuestas.calles,
-                sanidad: state.formData.respuestas.sanidad,
-                comercio: state.formData.respuestas.comercio,
-                vivienda: state.formData.respuestas.vivienda
-            };
-            
-            state.encuestas.push(nueva);
-            guardarDatos();
-            state.view = 'exito';
-            state.formData = { barrio: '', consentimiento: false, respuestas: {} };
-            PREGUNTAS.forEach(p => { state.formData.respuestas[p.id] = 5; });
+            state.enviando = true;
+            render();
+
+            try {
+                const { data, error } = await supabaseClient
+                    .from('encuestas')
+                    .insert([{
+                        barrio: state.formData.barrio,
+                        dispositivo_id: state.dispositivoId,
+                        consentimiento: true,
+                        seguridad: state.formData.respuestas.seguridad,
+                        limpieza: state.formData.respuestas.limpieza,
+                        transporte: state.formData.respuestas.transporte,
+                        zonas_verdes: state.formData.respuestas.zonas_verdes,
+                        ruido: state.formData.respuestas.ruido,
+                        calles: state.formData.respuestas.calles,
+                        sanidad: state.formData.respuestas.sanidad,
+                        comercio: state.formData.respuestas.comercio,
+                        vivienda: state.formData.respuestas.vivienda
+                    }])
+                    .select();
+                
+                if (error) throw error;
+
+                state.view = 'exito';
+                state.formData = { barrio: '', consentimiento: false, respuestas: {} };
+                PREGUNTAS.forEach(p => { state.formData.respuestas[p.id] = 5; });
+                await cargarEncuestas();
+            } catch (error) {
+                console.error('Error enviando encuesta:', error);
+                alert('Error al enviar la encuesta. Por favor, intenta de nuevo.');
+            }
+
+            state.enviando = false;
             render();
         }
 
@@ -206,6 +290,20 @@
         function render() {
             const app = document.getElementById('app');
             
+            if (state.loading) {
+                app.innerHTML = `
+                    <div class="container">
+                        <div class="card">
+                            <div class="loading">
+                                <h2>Cargando...</h2>
+                                <p>Conectando con la base de datos</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+            
             if (state.view === 'encuesta') {
                 app.innerHTML = `
                     <div class="container">
@@ -213,10 +311,12 @@
                             <h1>Encuesta Ciudadana Valencia</h1>
                             <p class="subtitle">Tu opinión es importante para mejorar nuestros barrios</p>
                             
+                            <div class="info">☁️ Conectado a base de datos en la nube - ${state.encuestas.length} encuestas registradas</div>
+                            
                             ${state.modoPractica ? '<div class="warning">⚠️ MODO PRÁCTICA ACTIVADO</div>' : ''}
                             
                             <label>Selecciona tu barrio *</label>
-                            <select id="barrio" onchange="updateBarrio(this.value)">
+                            <select id="barrio" onchange="updateBarrio(this.value)" ${state.enviando ? 'disabled' : ''}>
                                 <option value="">-- Selecciona un barrio --</option>
                                 ${BARRIOS.map(b => `<option value="${b}" ${state.formData.barrio === b ? 'selected' : ''}>${b}</option>`).join('')}
                             </select>
@@ -231,7 +331,7 @@
                                     <div class="range-container">
                                         <span class="range-label">0</span>
                                         <input type="range" min="0" max="10" value="${state.formData.respuestas[p.id]}" 
-                                            oninput="updateRespuesta('${p.id}', this.value)">
+                                            oninput="updateRespuesta('${p.id}', this.value)" ${state.enviando ? 'disabled' : ''}>
                                         <span class="range-label">10</span>
                                         <span class="value-display" id="val-${p.id}">${state.formData.respuestas[p.id]}</span>
                                     </div>
@@ -241,15 +341,17 @@
                             <div class="consent-box">
                                 <label>
                                     <input type="checkbox" ${state.formData.consentimiento ? 'checked' : ''} 
-                                        onchange="updateConsentimiento(this.checked)">
+                                        onchange="updateConsentimiento(this.checked)" ${state.enviando ? 'disabled' : ''}>
                                     <span><strong>Protección de datos:</strong> Acepto que mis datos sean procesados de forma anónima con fines estadísticos. Los datos recogidos cumplen con el RGPD.</span>
                                 </label>
                                 ${state.errors.consentimiento ? `<div class="error">${state.errors.consentimiento}</div>` : ''}
                             </div>
                             
                             <div class="button-group">
-                                <button class="btn-primary" onclick="enviar()">Enviar Encuesta</button>
-                                <button class="btn-secondary admin-btn" onclick="showAdminLogin()">⚙️</button>
+                                <button class="btn-primary" onclick="enviar()" ${state.enviando ? 'disabled' : ''}>
+                                    ${state.enviando ? 'Enviando...' : 'Enviar Encuesta'}
+                                </button>
+                                <button class="btn-secondary admin-btn" onclick="showAdminLogin()" ${state.enviando ? 'disabled' : ''}>⚙️</button>
                             </div>
                         </div>
                         <div class="device-id">ID Dispositivo: ${state.dispositivoId.substring(0, 15)}...</div>
@@ -261,7 +363,7 @@
                         <div class="card success-card">
                             <div class="success-icon">✅</div>
                             <h1>¡Encuesta Enviada!</h1>
-                            <p class="subtitle">Gracias por tu participación</p>
+                            <p class="subtitle">Gracias por tu participación. Los datos se han guardado en la nube.</p>
                             <button class="btn-primary" onclick="volver()">Volver al inicio</button>
                         </div>
                     </div>
@@ -274,7 +376,7 @@
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
                                 <div>
                                     <h1 style="text-align: left; margin-bottom: 4px;">Panel Admin</h1>
-                                    <p class="subtitle" style="text-align: left; margin: 0;">Estadísticas</p>
+                                    <p class="subtitle" style="text-align: left; margin: 0;">Datos desde Supabase (nube)</p>
                                 </div>
                                 <button class="btn-secondary" onclick="volver()">Salir</button>
                             </div>
@@ -282,7 +384,7 @@
                             <div class="stats-grid">
                                 <div class="stat-box">
                                     <div class="stat-value">${state.encuestas.length}</div>
-                                    <div class="stat-label">Total Encuestas</div>
+                                    <div class="stat-label">Total Encuestas (nube)</div>
                                 </div>
                                 <div class="stat-box">
                                     <button onclick="togglePractica()" class="btn-primary" style="width: 100%;">
@@ -376,11 +478,12 @@
             render();
         }
 
-        function checkAdmin() {
+        async function checkAdmin() {
             const pass = document.getElementById('adminPass')?.value || '';
             if (pass === 'admin2025') {
                 state.view = 'admin';
                 state.showAdminLogin = false;
+                await cargarEncuestas();
                 render();
             } else {
                 alert('Contraseña incorrecta');
@@ -392,15 +495,15 @@
             render();
         }
 
-        function togglePractica() {
+        async function togglePractica() {
             state.modoPractica = !state.modoPractica;
-            guardarDatos();
+            await guardarModoPractica(state.modoPractica);
             render();
         }
 
         // Iniciar
-        render();
-        console.log('✅ Aplicación cargada correctamente');
+        inicializar();
+        console.log('✅ Aplicación conectada a Supabase');
     </script>
 </body>
 </html>
